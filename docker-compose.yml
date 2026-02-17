@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+  migration-web:
+    build: .
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      # Mount config and data so they persist across restarts
+      - ./config.yaml:/app/config.yaml
+      - ./data:/app/data
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      # Optionally override secrets via environment variables:
+      # - GRAPH_TENANT_ID=
+      # - GRAPH_CLIENT_ID=
+      # - GRAPH_CLIENT_SECRET=
+      # - IMAP_PASSWORD=
+    restart: unless-stopped

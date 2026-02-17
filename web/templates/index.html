@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full" :class="darkMode ? 'dark' : ''" x-data="{ darkMode: localStorage.getItem('darkMode') !== 'false' }" x-init="$watch('darkMode', v => localStorage.setItem('darkMode', v))">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Techvee Mail Migration</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    [x-cloak] { display: none !important; }
+    .fade-in { animation: fadeIn 0.2s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .pulse-dot { animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+    .log-line { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace; font-size: 0.75rem; line-height: 1.5; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { border-radius: 3px; }
+    .dark ::-webkit-scrollbar-thumb { background: #374151; }
+    ::-webkit-scrollbar-thumb { background: #d1d5db; }
+  </style>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50:'#eef2ff', 100:'#e0e7ff', 200:'#c7d2fe', 300:'#a5b4fc', 400:'#818cf8', 500:'#6366f1', 600:'#4f46e5', 700:'#4338ca', 800:'#3730a3', 900:'#312e81' },
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="h-full bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 transition-colors duration-200" x-data="migrationApp()">
+
+  <div class="flex h-full">
+
+    <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
+    <aside class="w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col shrink-0">
+      <!-- Branding -->
+      <div class="px-5 py-5 border-b border-gray-200 dark:border-gray-800">
+        <div class="flex items-center gap-2.5">
+          <!-- Techvee logo -->
+          <svg class="w-9 h-9 shrink-0" viewBox="690 299 473 473" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="926.5" cy="535.5" r="236.5" fill="#1CACE8"/>
+            <path d="M1067 395L960 700H899L788 395H849V448H898V582H957V448H1006V395Z" fill="#fff"/>
+          </svg>
+          <div>
+            <h1 class="text-[15px] font-extrabold text-gray-900 dark:text-white leading-tight tracking-tight">TECHVEE</h1>
+            <p class="text-[10px] text-gray-400 dark:text-gray-500 font-medium tracking-wide uppercase">Mail Migration</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <nav class="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+        <template x-for="item in nav" :key="item.id">
+          <button
+            @click="page = item.id; if(item.onLoad) item.onLoad()"
+            :class="page === item.id
+              ? 'bg-brand-50 dark:bg-brand-600/10 text-brand-700 dark:text-brand-400 font-semibold'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200'"
+            class="w-full flex items-center gap-3 px-3 py-2 text-[13px] rounded-lg transition-all"
+          >
+            <i :class="item.icon" class="w-4 text-center text-[11px]"></i>
+            <span x-text="item.label"></span>
+            <span x-show="item.badge" x-text="item.badge" class="ml-auto text-[10px] bg-red-500 text-white rounded-full px-1.5 py-0.5 leading-none font-bold"></span>
+          </button>
+        </template>
+      </nav>
+
+      <!-- Footer -->
+      <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-800 space-y-3">
+        <!-- Dark/Light toggle -->
+        <button @click="darkMode = !darkMode" class="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition">
+          <i :class="darkMode ? 'fas fa-sun text-yellow-400' : 'fas fa-moon text-gray-400'" class="w-4 text-center"></i>
+          <span x-text="darkMode ? 'Light Mode' : 'Dark Mode'"></span>
+        </button>
+        <!-- Connection status -->
+        <div class="flex items-center gap-2 px-2 text-[11px]">
+          <span class="w-1.5 h-1.5 rounded-full" :class="wsConnected ? 'bg-emerald-500 pulse-dot' : 'bg-red-400'"></span>
+          <span x-text="wsConnected ? 'Connected' : 'Disconnected'" class="text-gray-400"></span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ═══════════════════ MAIN CONTENT ═══════════════════ -->
+    <main class="flex-1 overflow-y-auto">
+
+      <!-- ==================== DASHBOARD ==================== -->
+      <div x-show="page === 'dashboard'" x-cloak class="fade-in p-6 max-w-6xl mx-auto space-y-6">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-bold">Dashboard</h2>
+          <button @click="loadStats()" class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+            <i class="fas fa-sync-alt mr-1"></i> Refresh
+          </button>
+        </div>
+
+        <!-- Stats cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
+            <p class="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Mailboxes</p>
+            <p class="text-2xl font-bold mt-1" x-text="stats.total_mailboxes || 0"></p>
+          </div>
+          <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
+            <p class="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Total Messages</p>
+            <p class="text-2xl font-bold mt-1" x-text="(stats.total_messages || 0).toLocaleString()"></p>
+          </div>
+          <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
+            <p class="text-[10px] text-emerald-500 uppercase tracking-wider font-semibold">Migrated</p>
+            <p class="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1" x-text="(stats.migrated || 0).toLocaleString()"></p>
+          </div>
+          <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
+            <p class="text-[10px] text-yellow-500 uppercase tracking-wider font-semibold">Skipped</p>
+            <p class="text-2xl font-bold text-yellow-600 dark:text-yellow-400 mt-1" x-text="(stats.skipped || 0).toLocaleString()"></p>
+          </div>
+          <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
+            <p class="text-[10px] text-red-500 uppercase tracking-wider font-semibold">Failed</p>
+            <p class="text-2xl font-bold mt-1" :class="(stats.failed||0) > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-300 dark:text-gray-600'" x-text="stats.failed || 0"></p>
+          </div>
+        </div>
+
+        <!-- Active job -->
+        <div x-show="job.running" class="bg-white dark:bg-gray-900 rounded-xl border border-brand-200 dark:border-brand-800 p-5">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <div class="w-2.5 h-2.5 bg-brand-500 rounded-full pulse-dot"></div>
+              <h3 class="text-sm font-semibold capitalize" x-text="(job.type || 'Job').replace('_',' ') + ' in Progress'"></h3>
+            </div>
+            <button @click="stopJob()" class="text-xs px-3 py-1.5 bg-red-50 dark:bg-red-600/10 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-600/20 transition font-medium">
+              <i class="fas fa-stop mr-1"></i> Stop
+            </button>
+          </div>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-3" x-text="job.message"></p>
+          <div class="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2">
+            <div class="bg-brand-500 h-2 rounded-full transition-all duration-500 ease-out" :style="`width: ${job.progress_pct}%`"></div>
+          </div>
+          <div class="flex justify-between text-[11px] text-gray-400 mt-1.5">
+            <span x-text="`${job.progress_pct.toFixed(1)}%`"></span>
+            <span x-text="job.mailbox"></span>
+          </div>
+        </div>
+
+        <!-- Quick actions -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+          <h3 class="text-sm font-semibold mb-4">Quick Actions</h3>
+          <div class="flex flex-wrap gap-2">
+            <button @click="startJob('dryrun')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-vial mr-1.5 text-yellow-500"></i> Dry Run</button>
+            <button @click="page='migration'" :disabled="job.running" class="btn btn-primary"><i class="fas fa-play mr-1.5"></i> Start Migration</button>
+            <button @click="startJob('repair')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-wrench mr-1.5 text-amber-500"></i> Repair</button>
+            <button @click="startJob('merge')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-object-group mr-1.5 text-purple-500"></i> Merge Folders</button>
+          </div>
+        </div>
+
+        <!-- Recent runs -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+          <h3 class="text-sm font-semibold mb-3">Recent Runs</h3>
+          <div x-show="history.length === 0" class="text-sm text-gray-400 py-4 text-center">No runs recorded yet.</div>
+          <div class="space-y-1.5">
+            <template x-for="run in history.slice(0,5)" :key="run.id">
+              <div class="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg text-sm">
+                <div class="flex items-center gap-3">
+                  <span class="text-gray-400 text-xs w-8 text-right font-mono">#<span x-text="run.id"></span></span>
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold" :class="{
+                    'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400': run.status === 'completed',
+                    'bg-yellow-100 dark:bg-yellow-500/10 text-yellow-700 dark:text-yellow-400': run.status === 'interrupted',
+                    'bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400': run.status === 'error',
+                    'bg-brand-100 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400': run.status === 'running',
+                  }" x-text="run.status"></span>
+                </div>
+                <span class="text-gray-400 text-xs" x-text="formatDate(run.started_at)"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== CONFIGURATION ==================== -->
+      <div x-show="page === 'config'" x-cloak class="fade-in p-6 max-w-4xl mx-auto space-y-6">
+        <h2 class="text-lg font-bold">Configuration</h2>
+
+        <!-- Source IMAP -->
+        <div class="card">
+          <h3 class="card-title"><i class="fas fa-server text-brand-500 mr-2"></i> IMAP Source</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <div><label class="label">Host</label><input type="text" x-model="config.source.host" class="input"></div>
+            <div><label class="label">Port</label><input type="number" x-model.number="config.source.port" class="input"></div>
+            <div class="flex items-center gap-2 pt-2">
+              <input type="checkbox" x-model="config.source.ssl" class="rounded bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-brand-600 focus:ring-brand-500">
+              <label class="text-sm text-gray-600 dark:text-gray-400">Use SSL/TLS</label>
+            </div>
+            <div><label class="label">Default Password</label><input type="password" x-model="config.source.password" placeholder="***" class="input"></div>
+          </div>
+          <button @click="saveSource()" class="btn btn-primary mt-4"><i class="fas fa-save mr-1.5"></i> Save Source</button>
+        </div>
+
+        <!-- Target M365 -->
+        <div class="card">
+          <h3 class="card-title"><i class="fab fa-microsoft text-brand-500 mr-2"></i> Microsoft 365 Target</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <div><label class="label">Tenant ID</label><input type="text" x-model="config.target.tenant_id" class="input font-mono text-xs"></div>
+            <div><label class="label">Client ID</label><input type="text" x-model="config.target.client_id" class="input font-mono text-xs"></div>
+            <div class="md:col-span-2"><label class="label">Client Secret</label><input type="password" x-model="config.target.client_secret" placeholder="***" class="input font-mono text-xs"></div>
+          </div>
+          <button @click="saveTarget()" class="btn btn-primary mt-4"><i class="fas fa-save mr-1.5"></i> Save Target</button>
+        </div>
+
+        <!-- Options -->
+        <div class="card">
+          <h3 class="card-title"><i class="fas fa-sliders text-brand-500 mr-2"></i> Options</h3>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+            <div><label class="label">Batch Size</label><input type="number" x-model.number="config.options.batch_size" class="input"></div>
+            <div><label class="label">Max Workers</label><input type="number" x-model.number="config.options.max_workers" class="input"></div>
+            <div><label class="label">Max Retries</label><input type="number" x-model.number="config.options.max_retries" class="input"></div>
+            <div><label class="label">Request Delay (s)</label><input type="number" step="0.1" x-model.number="config.options.request_delay" class="input"></div>
+            <div>
+              <label class="label">Log Level</label>
+              <select x-model="config.options.log_level" class="input">
+                <option>DEBUG</option><option>INFO</option><option>WARNING</option><option>ERROR</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Exclude Folders -->
+          <div class="mt-4">
+            <label class="label">Exclude Folders</label>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Folders matching these names (case-insensitive) will be skipped during migration for all mailboxes.</p>
+            <div class="flex flex-wrap gap-2 mb-2">
+              <template x-for="(folder, fi) in config.options.exclude_folders" :key="fi">
+                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+                  <span x-text="folder"></span>
+                  <button @click="config.options.exclude_folders.splice(fi, 1)" class="hover:text-red-900 dark:hover:text-red-100" title="Remove">&times;</button>
+                </span>
+              </template>
+            </div>
+            <div class="flex gap-2 max-w-sm">
+              <input type="text" x-ref="newExcludeFolder" placeholder="e.g. Spam" class="input flex-1" @keydown.enter.prevent="
+                const v = $refs.newExcludeFolder.value.trim();
+                if (v && !config.options.exclude_folders.includes(v)) { config.options.exclude_folders.push(v); }
+                $refs.newExcludeFolder.value = '';
+              ">
+              <button class="btn btn-secondary text-xs" @click="
+                const v = $refs.newExcludeFolder.value.trim();
+                if (v && !config.options.exclude_folders.includes(v)) { config.options.exclude_folders.push(v); }
+                $refs.newExcludeFolder.value = '';
+              "><i class="fas fa-plus mr-1"></i> Add</button>
+            </div>
+          </div>
+
+          <button @click="saveOptions()" class="btn btn-primary mt-4"><i class="fas fa-save mr-1.5"></i> Save Options</button>
+        </div>
+      </div>
+
+      <!-- ==================== MAILBOXES ==================== -->
+      <div x-show="page === 'mailboxes'" x-cloak class="fade-in p-6 max-w-4xl mx-auto space-y-6">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-bold">Mailbox Mappings</h2>
+          <button @click="showAddMailbox = true; editingMailbox = null; mbForm = {source_user:'',target_user:'',source_password:''}" class="btn btn-primary text-sm">
+            <i class="fas fa-plus mr-1.5"></i> Add Mailbox
+          </button>
+        </div>
+
+        <!-- Modal -->
+        <div x-show="showAddMailbox" x-cloak class="fixed inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center" @click.self="showAddMailbox = false">
+          <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 w-full max-w-lg shadow-2xl fade-in">
+            <h3 class="text-sm font-semibold mb-4" x-text="editingMailbox !== null ? 'Edit Mailbox' : 'Add Mailbox'"></h3>
+            <div class="space-y-3">
+              <div><label class="label">Source Email (IMAP)</label><input type="email" x-model="mbForm.source_user" placeholder="user@example.com" class="input"></div>
+              <div><label class="label">Target Email (M365)</label><input type="email" x-model="mbForm.target_user" placeholder="user@company.com" class="input"></div>
+              <div><label class="label">IMAP Password</label><input type="password" x-model="mbForm.source_password" placeholder="Enter password" class="input"></div>
+            </div>
+            <div class="flex justify-end gap-2 mt-5">
+              <button @click="showAddMailbox = false; editingMailbox = null" class="btn btn-secondary">Cancel</button>
+              <button @click="saveMailbox()" class="btn btn-primary"><i class="fas fa-save mr-1.5"></i> Save</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- List -->
+        <div class="space-y-2">
+          <template x-for="(mb, idx) in mailboxes" :key="idx">
+            <div class="card p-4 flex items-center justify-between hover:border-brand-200 dark:hover:border-brand-800 transition group">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 text-sm">
+                  <i class="fas fa-inbox text-gray-400 text-xs"></i>
+                  <span class="font-medium truncate" x-text="mb.source_user"></span>
+                  <i class="fas fa-arrow-right text-gray-300 dark:text-gray-600 text-[10px]"></i>
+                  <span class="text-brand-600 dark:text-brand-400 truncate" x-text="mb.target_user"></span>
+                </div>
+              </div>
+              <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                <button @click="editMailbox(idx)" class="p-2 text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"><i class="fas fa-pen text-xs"></i></button>
+                <button @click="deleteMailbox(idx)" class="p-2 text-gray-400 hover:text-red-500 transition rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"><i class="fas fa-trash text-xs"></i></button>
+              </div>
+            </div>
+          </template>
+          <div x-show="mailboxes.length === 0" class="text-center text-gray-400 py-12">
+            <i class="fas fa-inbox text-4xl mb-3 block text-gray-300 dark:text-gray-700"></i>
+            <p class="text-sm">No mailbox mappings configured yet.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== MIGRATION ==================== -->
+      <div x-show="page === 'migration'" x-cloak class="fade-in p-6 max-w-6xl mx-auto space-y-6">
+        <h2 class="text-lg font-bold">Migration</h2>
+
+        <!-- Mailbox selection -->
+        <div class="card">
+          <h3 class="card-title mb-3"><i class="fas fa-check-double text-brand-500 mr-2"></i> Select Mailboxes</h3>
+          <div class="flex items-center gap-3 mb-3">
+            <button @click="selectAllMailboxes(true)" class="text-xs text-brand-600 dark:text-brand-400 hover:underline">Select All</button>
+            <span class="text-gray-300 dark:text-gray-700">|</span>
+            <button @click="selectAllMailboxes(false)" class="text-xs text-gray-500 hover:underline">Deselect All</button>
+            <span class="ml-auto text-xs text-gray-400" x-text="`${selectedMailboxes.length} of ${mailboxes.length} selected`"></span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-1.5">
+            <template x-for="(mb, idx) in mailboxes" :key="idx">
+              <label class="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition text-sm">
+                <input type="checkbox" :value="mb.source_user" x-model="selectedMailboxes" class="rounded bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-brand-600 focus:ring-brand-500">
+                <span class="truncate" x-text="mb.source_user"></span>
+                <i class="fas fa-arrow-right text-gray-300 dark:text-gray-600 text-[9px]"></i>
+                <span class="text-gray-500 truncate text-xs" x-text="mb.target_user"></span>
+              </label>
+            </template>
+          </div>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="card">
+          <h3 class="card-title mb-4"><i class="fas fa-play-circle text-brand-500 mr-2"></i> Actions</h3>
+          <div class="flex flex-wrap gap-2">
+            <button @click="startJob('dryrun')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-vial mr-1.5 text-yellow-500"></i> Dry Run</button>
+            <button @click="startFilteredJob('migrate')" :disabled="job.running" class="btn btn-primary"><i class="fas fa-play mr-1.5"></i> Start Migration</button>
+            <button @click="startJob('fix_drafts')" :disabled="job.running" class="btn btn-success"><i class="fas fa-bolt mr-1.5"></i> Fix Drafts</button>
+            <button @click="startJob('repair')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-wrench mr-1.5 text-amber-500"></i> Repair</button>
+            <button @click="startJob('merge')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-object-group mr-1.5 text-purple-500"></i> Merge Folders</button>
+            <div class="w-px h-8 bg-gray-200 dark:bg-gray-700 mx-1 self-center"></div>
+            <button @click="startFilteredJob('clean')" :disabled="job.running" class="btn btn-danger-outline"><i class="fas fa-trash-can mr-1.5"></i> Clean Drafts</button>
+            <button @click="startJob('purge')" :disabled="job.running" class="btn btn-danger-outline"><i class="fas fa-broom mr-1.5"></i> Purge</button>
+            <button @click="startJob('relocate')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-truck-arrow-right mr-1.5"></i> Relocate</button>
+            <template x-if="job.running">
+              <button @click="stopJob()" class="btn btn-danger ml-auto"><i class="fas fa-stop mr-1.5"></i> Stop</button>
+            </template>
+          </div>
+        </div>
+
+        <!-- Progress -->
+        <div x-show="job.running || job.message" class="card">
+          <div class="flex items-center gap-3 mb-2">
+            <div x-show="job.running" class="w-2.5 h-2.5 bg-brand-500 rounded-full pulse-dot"></div>
+            <span class="text-sm font-medium" x-text="job.message"></span>
+          </div>
+          <div class="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2.5">
+            <div class="bg-brand-500 h-2.5 rounded-full transition-all duration-500 ease-out" :style="`width: ${job.progress_pct}%`"></div>
+          </div>
+          <div class="flex justify-between text-[11px] text-gray-400 mt-1.5">
+            <span x-text="`${job.progress_pct.toFixed(1)}%`"></span>
+            <span x-text="job.mailbox"></span>
+          </div>
+          <div x-show="job.error" class="mt-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-600 dark:text-red-400">
+            <i class="fas fa-exclamation-triangle mr-1"></i> <span x-text="job.error"></span>
+          </div>
+        </div>
+
+        <!-- Live events -->
+        <div class="card">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="card-title"><i class="fas fa-bolt text-brand-500 mr-2"></i> Live Events</h3>
+            <button @click="liveEvents = []" class="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Clear</button>
+          </div>
+          <div class="bg-gray-50 dark:bg-gray-950 rounded-lg p-3 max-h-56 overflow-y-auto" x-ref="eventsBox">
+            <div x-show="liveEvents.length === 0" class="text-center text-gray-400 py-6 text-sm">Waiting for events...</div>
+            <template x-for="(evt, ei) in liveEvents" :key="ei">
+              <div class="log-line py-0.5 flex gap-2" :class="{
+                'text-emerald-600 dark:text-emerald-400': evt._type === 'success',
+                'text-red-500 dark:text-red-400': evt._type === 'error',
+                'text-amber-600 dark:text-amber-300': evt._type === 'warning',
+                'text-cyan-600 dark:text-cyan-400': evt._type === 'info',
+                'text-gray-500 dark:text-gray-400': evt._type === 'debug' || !evt._type,
+              }">
+                <span class="text-gray-400 dark:text-gray-600 shrink-0" x-text="evt._time || ''"></span>
+                <span class="shrink-0 w-5 text-center" x-html="evt._icon || ''"></span>
+                <span x-text="evt._text || ''"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== FOLDER DETAIL ==================== -->
+      <div x-show="page === 'folders'" x-cloak class="fade-in p-6 max-w-6xl mx-auto space-y-6">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-bold">Folder Detail</h2>
+          <button @click="loadFolderStats()" class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><i class="fas fa-sync-alt mr-1"></i> Refresh</button>
+        </div>
+        <div x-show="!folderStats.length" class="text-center text-gray-400 py-12 text-sm">No migration data yet. Run a migration first.</div>
+        <template x-for="mb in folderStats" :key="mb.mailbox">
+          <div class="card">
+            <h3 class="card-title mb-3"><i class="fas fa-inbox text-brand-500 mr-2"></i> <span x-text="mb.mailbox"></span></h3>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-gray-200 dark:border-gray-800">
+                    <th class="text-left py-2 pr-4 text-[11px] text-gray-400 font-semibold uppercase tracking-wider">Folder</th>
+                    <th class="text-right py-2 px-3 text-[11px] text-emerald-500 font-semibold uppercase tracking-wider">Success</th>
+                    <th class="text-right py-2 px-3 text-[11px] text-red-500 font-semibold uppercase tracking-wider">Failed</th>
+                    <th class="text-right py-2 pl-3 text-[11px] text-gray-400 font-semibold uppercase tracking-wider">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="f in mb.folders" :key="f.name">
+                    <tr class="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition">
+                      <td class="py-1.5 pr-4 font-mono text-xs text-gray-700 dark:text-gray-300" x-text="f.name"></td>
+                      <td class="py-1.5 px-3 text-right text-emerald-600 dark:text-emerald-400 font-medium" x-text="(f.success||0).toLocaleString()"></td>
+                      <td class="py-1.5 px-3 text-right font-medium" :class="(f.failed||0)>0 ? 'text-red-600 dark:text-red-400' : 'text-gray-300 dark:text-gray-700'" x-text="f.failed||0"></td>
+                      <td class="py-1.5 pl-3 text-right text-gray-500" x-text="((f.success||0)+(f.failed||0)).toLocaleString()"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- ==================== LOGS ==================== -->
+      <div x-show="page === 'logs'" x-cloak class="fade-in p-6 max-w-6xl mx-auto space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-bold">Logs</h2>
+          <div class="flex items-center gap-2">
+            <a href="/api/logs/download" download class="btn btn-secondary text-xs"><i class="fas fa-download mr-1.5"></i> Download</a>
+            <button @click="loadLogs()" class="btn btn-secondary text-xs"><i class="fas fa-sync-alt mr-1.5"></i> Refresh</button>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="flex items-center gap-3">
+          <div class="relative flex-1">
+            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+            <input type="text" x-model="logSearch" placeholder="Search logs..." class="input pl-9 text-xs">
+          </div>
+          <select x-model="logFilter" @change="loadLogs()" class="input w-auto text-xs">
+            <option value="">All Levels</option>
+            <option value="ERROR">Errors Only</option>
+            <option value="WARNING">Warnings</option>
+            <option value="INFO">Info</option>
+            <option value="DEBUG">Debug</option>
+          </select>
+          <select x-model="logCount" @change="loadLogs()" class="input w-auto text-xs">
+            <option value="200">Last 200</option>
+            <option value="500">Last 500</option>
+            <option value="1000">Last 1000</option>
+            <option value="5000">Last 5000</option>
+          </select>
+        </div>
+
+        <div class="card p-0">
+          <div class="bg-gray-50 dark:bg-gray-950 rounded-xl p-3 max-h-[72vh] overflow-y-auto" x-ref="logBox">
+            <template x-for="(line, li) in filteredLogLines" :key="li">
+              <div class="log-line py-0.5" :class="{
+                'text-red-600 dark:text-red-400': line.includes('ERROR'),
+                'text-amber-600 dark:text-amber-300': line.includes('WARNING') && !line.includes('ERROR'),
+                'text-gray-600 dark:text-gray-400': !line.includes('ERROR') && !line.includes('WARNING'),
+              }" x-text="line.trimEnd()"></div>
+            </template>
+            <div x-show="filteredLogLines.length === 0" class="text-gray-400 text-sm text-center py-12">
+              <i class="fas fa-terminal text-2xl mb-2 block text-gray-300 dark:text-gray-700"></i>
+              No log entries match your filters.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== HISTORY ==================== -->
+      <div x-show="page === 'history'" x-cloak class="fade-in p-6 max-w-6xl mx-auto space-y-6">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-bold">Migration History</h2>
+          <div class="flex items-center gap-2">
+            <a href="/api/export/csv" download class="btn btn-secondary text-xs"><i class="fas fa-file-csv mr-1.5 text-emerald-500"></i> Export CSV</a>
+            <button @click="loadHistory()" class="btn btn-secondary text-xs"><i class="fas fa-sync-alt mr-1.5"></i> Refresh</button>
+          </div>
+        </div>
+
+        <div class="card p-0 overflow-hidden">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 dark:bg-gray-800/50">
+              <tr>
+                <th class="text-left px-4 py-3 text-[11px] text-gray-500 font-semibold uppercase tracking-wider">Run</th>
+                <th class="text-left px-4 py-3 text-[11px] text-gray-500 font-semibold uppercase tracking-wider">Started</th>
+                <th class="text-left px-4 py-3 text-[11px] text-gray-500 font-semibold uppercase tracking-wider">Ended</th>
+                <th class="text-left px-4 py-3 text-[11px] text-gray-500 font-semibold uppercase tracking-wider">Status</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+              <template x-for="run in history" :key="run.id">
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition">
+                  <td class="px-4 py-3 text-gray-600 dark:text-gray-300 font-mono text-xs">#<span x-text="run.id"></span></td>
+                  <td class="px-4 py-3 text-gray-500 text-xs" x-text="formatDate(run.started_at)"></td>
+                  <td class="px-4 py-3 text-gray-500 text-xs" x-text="run.ended_at ? formatDate(run.ended_at) : '—'"></td>
+                  <td class="px-4 py-3">
+                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold" :class="{
+                      'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400': run.status === 'completed',
+                      'bg-yellow-100 dark:bg-yellow-500/10 text-yellow-700 dark:text-yellow-400': run.status === 'interrupted',
+                      'bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400': run.status === 'error',
+                      'bg-brand-100 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400': run.status === 'running',
+                    }" x-text="run.status"></span>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div x-show="history.length === 0" class="text-center text-gray-400 py-12 text-sm">No migration runs yet.</div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Toast notifications -->
+  <div class="fixed bottom-4 right-4 space-y-2 z-50">
+    <template x-for="(toast, ti) in toasts" :key="ti">
+      <div class="fade-in px-4 py-3 rounded-lg shadow-xl text-sm max-w-sm border"
+        :class="{
+          'bg-emerald-50 dark:bg-emerald-900/90 border-emerald-200 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200': toast.type === 'success',
+          'bg-red-50 dark:bg-red-900/90 border-red-200 dark:border-red-700 text-red-800 dark:text-red-200': toast.type === 'error',
+          'bg-white dark:bg-gray-800/90 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200': toast.type === 'info',
+        }"
+        x-text="toast.message"
+        x-init="setTimeout(() => toasts.splice(ti, 1), 4000)"
+      ></div>
+    </template>
+  </div>
+
+  <!-- ═══════════════════ COMPONENT STYLES ═══════════════════ -->
+  <style>
+    .card { background: white; border-radius: 0.75rem; border: 1px solid #e5e7eb; padding: 1.25rem; }
+    .dark .card { background: #111827; border-color: #1f2937; }
+    .card-title { font-size: 0.875rem; font-weight: 600; display: flex; align-items: center; }
+
+    .label { display: block; margin-bottom: 0.375rem; font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; }
+    .dark .label { color: #9ca3af; }
+
+    .input {
+      width: 100%; border-radius: 0.5rem; padding: 0.5rem 0.75rem; font-size: 0.875rem;
+      outline: none; transition: border-color 0.15s;
+      background: #f9fafb; border: 1px solid #d1d5db; color: #111827;
+    }
+    .input::placeholder { color: #9ca3af; }
+    .input:focus { border-color: #6366f1; box-shadow: 0 0 0 1px #6366f1; }
+    .dark .input { background: #1f2937; border-color: #374151; color: #f3f4f6; }
+    .dark .input::placeholder { color: #4b5563; }
+    .dark .input:focus { border-color: #6366f1; box-shadow: 0 0 0 1px #6366f1; }
+
+    select.input { appearance: auto; }
+
+    .btn {
+      display: inline-flex; align-items: center; padding: 0.5rem 1rem; border-radius: 0.5rem;
+      font-size: 0.875rem; font-weight: 500; transition: all 0.15s; cursor: pointer; border: none;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: #4f46e5; color: white; }
+    .btn-primary:hover:not(:disabled) { background: #4338ca; }
+    .btn-success { background: #059669; color: white; }
+    .btn-success:hover:not(:disabled) { background: #047857; }
+    .btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; }
+    .btn-secondary:hover:not(:disabled) { background: #e5e7eb; }
+    .dark .btn-secondary { background: #1f2937; color: #d1d5db; border-color: #374151; }
+    .dark .btn-secondary:hover:not(:disabled) { background: #374151; }
+    .btn-danger { background: #dc2626; color: white; }
+    .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+    .btn-danger-outline { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .btn-danger-outline:hover:not(:disabled) { background: #fee2e2; }
+    .dark .btn-danger-outline { background: rgba(220,38,38,0.1); color: #f87171; border-color: rgba(220,38,38,0.3); }
+    .dark .btn-danger-outline:hover:not(:disabled) { background: rgba(220,38,38,0.2); }
+  </style>
+
+  <!-- ═══════════════════ APPLICATION LOGIC ═══════════════════ -->
+  <script>
+    function migrationApp() {
+      return {
+        page: 'dashboard',
+        nav: [
+          { id: 'dashboard',  icon: 'fas fa-gauge-high',        label: 'Dashboard' },
+          { id: 'config',     icon: 'fas fa-gear',              label: 'Configuration' },
+          { id: 'mailboxes',  icon: 'fas fa-inbox',             label: 'Mailboxes' },
+          { id: 'migration',  icon: 'fas fa-play-circle',       label: 'Migration' },
+          { id: 'folders',    icon: 'fas fa-folder-tree',       label: 'Folder Detail', onLoad: () => this?.loadFolderStats?.() },
+          { id: 'logs',       icon: 'fas fa-terminal',          label: 'Logs', onLoad: () => this?.loadLogs?.() },
+          { id: 'history',    icon: 'fas fa-clock-rotate-left', label: 'History' },
+        ],
+
+        // State
+        wsConnected: false,
+        ws: null,
+        config: { source: {}, target: {}, options: { exclude_folders: [] }, mailboxes: [] },
+        mailboxes: [],
+        selectedMailboxes: [],
+        stats: {},
+        history: [],
+        folderStats: [],
+        job: { running: false, progress_pct: 0, message: '', mailbox: '', error: '', type: '', stats: {} },
+        liveEvents: [],
+        logLines: [],
+        logSearch: '',
+        logFilter: '',
+        logCount: '500',
+        toasts: [],
+        showAddMailbox: false,
+        editingMailbox: null,
+        mbForm: { source_user: '', target_user: '', source_password: '' },
+        pollTimer: null,
+
+        get filteredLogLines() {
+          if (!this.logSearch) return this.logLines;
+          const q = this.logSearch.toLowerCase();
+          return this.logLines.filter(l => l.toLowerCase().includes(q));
+        },
+
+        async init() {
+          await this.loadConfig();
+          await this.loadMailboxes();
+          await this.loadStats();
+          await this.loadHistory();
+          await this.loadJobStatus();
+          this.connectWebSocket();
+          this.pollTimer = setInterval(() => {
+            if (this.job.running) this.loadJobStatus();
+          }, 3000);
+        },
+
+        // -- API helpers --
+        async api(method, url, body) {
+          const opts = { method, headers: { 'Content-Type': 'application/json' } };
+          if (body) opts.body = JSON.stringify(body);
+          const res = await fetch(url, opts);
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ detail: res.statusText }));
+            throw new Error(err.detail || err.message || res.statusText);
+          }
+          return res.json();
+        },
+
+        toast(message, type = 'info') { this.toasts.push({ message, type }); },
+
+        formatDate(iso) {
+          if (!iso) return '';
+          try { return new Date(iso).toLocaleString(); } catch { return iso; }
+        },
+
+        selectAllMailboxes(val) {
+          this.selectedMailboxes = val ? this.mailboxes.map(m => m.source_user) : [];
+        },
+
+        // -- Config --
+        async loadConfig() { try { this.config = await this.api('GET', '/api/config'); } catch(e) { console.error(e); } },
+        async saveSource() {
+          try { await this.api('PUT', '/api/config/source', this.config.source); this.toast('Source saved', 'success'); }
+          catch(e) { this.toast(e.message, 'error'); }
+        },
+        async saveTarget() {
+          try { await this.api('PUT', '/api/config/target', this.config.target); this.toast('Target saved', 'success'); }
+          catch(e) { this.toast(e.message, 'error'); }
+        },
+        async saveOptions() {
+          try { await this.api('PUT', '/api/config/options', this.config.options); this.toast('Options saved', 'success'); }
+          catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        // -- Mailboxes --
+        async loadMailboxes() {
+          try {
+            this.mailboxes = await this.api('GET', '/api/mailboxes');
+            if (this.selectedMailboxes.length === 0) {
+              this.selectedMailboxes = this.mailboxes.map(m => m.source_user);
+            }
+          } catch(e) { console.error(e); }
+        },
+        editMailbox(idx) {
+          const mb = this.mailboxes[idx];
+          this.mbForm = { source_user: mb.source_user, target_user: mb.target_user, source_password: '' };
+          this.editingMailbox = idx;
+          this.showAddMailbox = true;
+        },
+        async saveMailbox() {
+          try {
+            if (this.editingMailbox !== null) {
+              await this.api('PUT', `/api/mailboxes/${this.editingMailbox}`, this.mbForm);
+              this.toast('Mailbox updated', 'success');
+            } else {
+              await this.api('POST', '/api/mailboxes', this.mbForm);
+              this.toast('Mailbox added', 'success');
+            }
+            this.showAddMailbox = false;
+            this.editingMailbox = null;
+            this.mbForm = { source_user: '', target_user: '', source_password: '' };
+            await this.loadMailboxes();
+          } catch(e) { this.toast(e.message, 'error'); }
+        },
+        async deleteMailbox(idx) {
+          if (!confirm(`Delete mapping for ${this.mailboxes[idx].source_user}?`)) return;
+          try { await this.api('DELETE', `/api/mailboxes/${idx}`); this.toast('Mailbox removed', 'success'); await this.loadMailboxes(); }
+          catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        // -- Stats, History, Folders --
+        async loadStats() { try { this.stats = await this.api('GET', '/api/stats'); } catch(e) { console.error(e); } },
+        async loadHistory() { try { this.history = await this.api('GET', '/api/history'); } catch(e) { console.error(e); } },
+        async loadFolderStats() { try { this.folderStats = await this.api('GET', '/api/stats/folders'); } catch(e) { console.error(e); } },
+
+        // -- Jobs --
+        async loadJobStatus() {
+          try {
+            const status = await this.api('GET', '/api/migration/status');
+            const wasRunning = this.job.running;
+            this.job = { ...this.job, ...status };
+            if (!status.running && wasRunning) {
+              await this.loadStats();
+              await this.loadHistory();
+            }
+          } catch(e) { console.error(e); }
+        },
+
+        async startJob(type) {
+          const endpoints = {
+            migrate: '/api/migration/start',
+            repair: '/api/repair/start',
+            merge: '/api/merge/start',
+            dryrun: '/api/dryrun/start',
+            relocate: '/api/relocate/start',
+            purge: '/api/purge/start',
+            fix_drafts: '/api/fix-drafts/start',
+            clean: '/api/clean/start',
+          };
+          try {
+            await this.api('POST', endpoints[type]);
+            this.job.running = true;
+            this.job.type = type;
+            this.job.progress_pct = 0;
+            this.job.message = 'Starting...';
+            this.job.error = '';
+            this.liveEvents = [];
+            this.toast(`${type.replace('_',' ')} started`, 'success');
+          } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        async startFilteredJob(type) {
+          const endpoints = { migrate: '/api/migration/start', clean: '/api/clean/start' };
+          let url = endpoints[type];
+          if (this.selectedMailboxes.length > 0 && this.selectedMailboxes.length < this.mailboxes.length) {
+            const params = this.selectedMailboxes.map(m => `mailboxes=${encodeURIComponent(m)}`).join('&');
+            url += '?' + params;
+          }
+          try {
+            const res = await fetch(url, { method: 'POST' });
+            if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || res.statusText); }
+            this.job.running = true;
+            this.job.type = type;
+            this.job.progress_pct = 0;
+            this.job.message = 'Starting...';
+            this.job.error = '';
+            this.liveEvents = [];
+            const label = this.selectedMailboxes.length < this.mailboxes.length
+              ? `${type.replace('_',' ')} (${this.selectedMailboxes.length} mailboxes)`
+              : `${type.replace('_',' ')} (all)`;
+            this.toast(label + ' started', 'success');
+          } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        async stopJob() {
+          try { await this.api('POST', '/api/migration/stop'); this.toast('Stopping...', 'info'); }
+          catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        // -- Logs --
+        async loadLogs() {
+          try {
+            const url = `/api/logs?lines=${this.logCount}` + (this.logFilter ? `&level=${this.logFilter}` : '');
+            const res = await this.api('GET', url);
+            this.logLines = res.lines || [];
+            this.$nextTick(() => {
+              const box = this.$refs.logBox;
+              if (box) box.scrollTop = box.scrollHeight;
+            });
+          } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        // -- WebSocket --
+        connectWebSocket() {
+          const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+          this.ws = new WebSocket(`${proto}//${location.host}/ws`);
+          this.ws.onopen = () => { this.wsConnected = true; };
+          this.ws.onclose = () => { this.wsConnected = false; setTimeout(() => this.connectWebSocket(), 3000); };
+          this.ws.onerror = () => { this.wsConnected = false; };
+          this.ws.onmessage = (evt) => {
+            try { this.handleEvent(JSON.parse(evt.data)); } catch(e) { console.error('WS parse error', e); }
+          };
+        },
+
+        formatEvent(data) {
+          const now = new Date();
+          const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          const e = data.event;
+
+          if (e === 'log') {
+            const lvl = (data.level || '').toUpperCase();
+            let type = 'debug';
+            let icon = '<i class="fas fa-circle text-[6px]"></i>';
+            if (lvl === 'ERROR')   { type = 'error';   icon = '<i class="fas fa-xmark"></i>'; }
+            if (lvl === 'WARNING') { type = 'warning'; icon = '<i class="fas fa-triangle-exclamation"></i>'; }
+            if (lvl === 'INFO')    { type = 'info';    icon = '<i class="fas fa-info"></i>'; }
+            return { _time: time, _type: type, _icon: icon, _text: data.message || '' };
+          }
+          if (e === 'complete') {
+            const status = data.status || 'done';
+            let detail = '';
+            if (data.results && Array.isArray(data.results)) {
+              detail = ' — ' + data.results.length + ' mailboxes processed';
+            }
+            if (data.deleted !== undefined) detail = ` — ${data.deleted} deleted, ${data.failed||0} failed`;
+            return { _time: time, _type: 'success', _icon: '<i class="fas fa-check-circle"></i>', _text: `Completed: ${status}${detail}` };
+          }
+          if (e === 'error') {
+            return { _time: time, _type: 'error', _icon: '<i class="fas fa-xmark-circle"></i>', _text: data.message || 'Unknown error' };
+          }
+          if (e === 'mailbox_start') {
+            return { _time: time, _type: 'info', _icon: '<i class="fas fa-inbox"></i>', _text: `Starting mailbox: ${data.source_user || data.mailbox || ''}` };
+          }
+          if (e === 'mailbox_done') {
+            const m = data.migrated || 0, f = data.failed || 0, s = data.skipped || 0;
+            return { _time: time, _type: 'success', _icon: '<i class="fas fa-inbox"></i>', _text: `Mailbox done: ${data.source_user || data.mailbox || ''} — ${m} migrated, ${s} skipped, ${f} failed` };
+          }
+          if (e === 'folder_start') {
+            return { _time: time, _type: 'info', _icon: '<i class="fas fa-folder-open"></i>', _text: `Folder: ${data.folder || ''} (${data.total || '?'} messages)` };
+          }
+          if (e === 'progress') {
+            return { _time: time, _type: 'debug', _icon: '<i class="fas fa-spinner"></i>', _text: `${data.mailbox || ''} — ${data.pct ? data.pct.toFixed(1) + '%' : ''} ${data.message || ''}`.trim() };
+          }
+          if (e === 'dryrun_result') {
+            const r = data.result || {};
+            const ok = r.imap_ok && r.graph_ok;
+            return { _time: time, _type: ok ? 'success' : 'error', _icon: ok ? '<i class="fas fa-check"></i>' : '<i class="fas fa-xmark"></i>',
+              _text: `${r.source_user || '?'} → ${r.target_user || '?'}: IMAP ${r.imap_ok ? 'OK' : 'FAIL'}${r.imap_folders ? ' (' + r.imap_folders + ' folders)' : ''}, Graph ${r.graph_ok ? 'OK' : 'FAIL'}` };
+          }
+          if (e === 'clean_mailbox_done') {
+            return { _time: time, _type: 'success', _icon: '<i class="fas fa-trash-can"></i>', _text: `Cleaned ${data.mailbox || '?'}: ${data.deleted || 0} deleted, ${data.failed || 0} failed` };
+          }
+          if (e === 'repair_start' || e === 'merge_start') {
+            return { _time: time, _type: 'info', _icon: '<i class="fas fa-wrench"></i>', _text: `${e.replace('_', ' ')}: ${data.mailbox || ''}` };
+          }
+          // Fallback for unknown events
+          const text = Object.entries(data).filter(([k]) => k !== 'event').map(([k,v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(', ');
+          return { _time: time, _type: 'debug', _icon: '<i class="fas fa-circle text-[6px]"></i>', _text: `[${e}] ${text}`.substring(0, 200) };
+        },
+
+        handleEvent(data) {
+          const formatted = this.formatEvent(data);
+          this.liveEvents.push(formatted);
+          if (this.liveEvents.length > 500) this.liveEvents.splice(0, this.liveEvents.length - 500);
+          this.$nextTick(() => { const box = this.$refs.eventsBox; if (box) box.scrollTop = box.scrollHeight; });
+
+          if (data.event === 'complete') {
+            this.job.running = false;
+            this.job.progress_pct = 100;
+            this.job.message = data.status || 'Complete';
+            this.loadStats();
+            this.loadHistory();
+            this.toast('Job completed!', 'success');
+          }
+          if (data.event === 'error' && !data.mailbox) {
+            this.job.error = data.message || 'Unknown error';
+            this.toast(data.message || 'Error occurred', 'error');
+          }
+        },
+      };
+    }
+  </script>
+
+</body>
+</html>

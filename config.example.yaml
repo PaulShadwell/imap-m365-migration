@@ -1,0 +1,62 @@
+# =============================================================================
+# IMAP to Microsoft 365 Migration Tool — Configuration
+# =============================================================================
+# Copy this file to config.yaml and fill in your values.
+# Secrets can also be provided via environment variables (see comments below).
+# =============================================================================
+
+source:
+  host: imap.example.com
+  port: 993
+  ssl: true
+  # Optional default IMAP password. If set, it is used as a fallback for any
+  # mailbox that does not specify its own source_password.
+  # Can also be set via env var IMAP_PASSWORD.
+  # password: ""
+
+target:
+  # Azure AD (Entra ID) app registration details.
+  # See README.md for step-by-step setup instructions.
+  tenant_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  client_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  # Client secret. Can also be set via env var GRAPH_CLIENT_SECRET.
+  client_secret: ""
+
+mailboxes:
+  # Each entry maps a source IMAP user to a target Microsoft 365 user.
+  # Each mailbox has its own IMAP password (source_password).
+  - source_user: alice@example.com
+    target_user: alice@company.onmicrosoft.com
+    source_password: "alices-imap-password"
+    # Optional: migrate only specific folders (comment out to migrate all).
+    # include_folders:
+    #   - INBOX
+    #   - Sent
+    #   - Drafts
+    # Optional: skip specific folders.
+    # exclude_folders:
+    #   - Trash
+    #   - Junk
+    #   - Spam
+
+  - source_user: bob@example.com
+    target_user: bob@company.onmicrosoft.com
+    source_password: "bobs-imap-password"
+
+options:
+  # Number of messages to fetch per batch before writing to Graph API.
+  batch_size: 50
+  # Maximum retry attempts for transient failures.
+  max_retries: 3
+  # Number of concurrent upload threads for Graph API.
+  # 4 is a good balance; increase to 8 for faster throughput on large mailboxes.
+  max_workers: 4
+  # Seconds to wait between Graph API calls to avoid 429 rate limiting.
+  # 0.25 is a good default; increase if you still see many 429s.
+  request_delay: 0.25
+  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL.
+  log_level: INFO
+  # Path to the SQLite state database (for resume support).
+  state_db: migration_state.db
+  # Path to the log file.
+  log_file: migration.log
