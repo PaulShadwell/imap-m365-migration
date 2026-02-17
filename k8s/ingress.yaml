@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mail-migration
+  namespace: mail-migration
+  annotations:
+    # Uncomment for cert-manager TLS:
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+    #
+    # If using Traefik (common on k3s Pi clusters):
+    # traefik.ingress.kubernetes.io/router.entrypoints: websecure
+spec:
+  rules:
+    - host: migration.example.com        # ← change to your domain/hostname
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mail-migration
+                port:
+                  name: http
+  # Uncomment for TLS:
+  # tls:
+  #   - hosts:
+  #       - migration.example.com
+  #     secretName: migration-tls

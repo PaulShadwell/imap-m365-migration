@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: migration-data
+  namespace: mail-migration
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      # SQLite DB + log files — 1 Gi is plenty for most migrations.
+      storage: 1Gi

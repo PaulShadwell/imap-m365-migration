@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: migration-config
+  namespace: mail-migration
+data:
+  config.yaml: |
+    source:
+      host: imap.example.com
+      port: 993
+      ssl: true
+
+    target:
+      # Secrets are injected via environment variables from the Secret.
+      # These placeholders are overridden at runtime.
+      tenant_id: ""
+      client_id: ""
+      client_secret: ""
+
+    mailboxes: []
+
+    options:
+      batch_size: 50
+      max_retries: 3
+      max_workers: 4
+      request_delay: 0.25
+      log_level: INFO
+      state_db: /data/migration_state.db
+      log_file: /data/migration.log

@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mail-migration
+  namespace: mail-migration
+  labels:
+    app: mail-migration
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # SQLite doesn't support concurrent writers
+  selector:
+    matchLabels:
+      app: mail-migration
+  template:
+    metadata:
+      labels:
+        app: mail-migration
+    spec:
+      containers:
+        - name: migration
+          image: ghcr.io/paulshadwell/imap-m365-migration:latest
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: PORT
+              value: "8000"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: GRAPH_TENANT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: migration-secrets
+                  key: GRAPH_TENANT_ID
+            - name: GRAPH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: migration-secrets
+                  key: GRAPH_CLIENT_ID
+            - name: GRAPH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: migration-secrets
+                  key: GRAPH_CLIENT_SECRET
+            - name: IMAP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: migration-secrets
+                  key: IMAP_PASSWORD
+                  optional: true
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /api/stats
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/stats
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: migration-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: migration-data

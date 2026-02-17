@@ -350,6 +350,43 @@ docker compose up --build -d
 
 Mount your `config.yaml` into the container (see `docker-compose.yml`).
 
+### Running on Kubernetes
+
+Pre-built manifests are provided in the `k8s/` directory. This works on any
+Kubernetes cluster, including ARM-based setups like a Raspberry Pi cluster
+running k3s.
+
+```bash
+# 1. Create the namespace
+kubectl apply -f k8s/namespace.yaml
+
+# 2. Edit the secret with your real credentials
+cp k8s/secret.example.yaml k8s/secret.yaml
+# Edit k8s/secret.yaml with your Azure + IMAP credentials
+
+# 3. Edit the ConfigMap with your IMAP host and mailbox mappings
+#    (secrets are injected via env vars, not the config file)
+kubectl apply -f k8s/configmap.yaml
+
+# 4. Apply everything
+kubectl apply -f k8s/secret.yaml
+kubectl apply -f k8s/pvc.yaml
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+
+# 5. (Optional) Apply the ingress if you have an ingress controller
+#    Edit k8s/ingress.yaml with your hostname first
+kubectl apply -f k8s/ingress.yaml
+
+# 6. Or port-forward to access locally
+kubectl port-forward -n mail-migration svc/mail-migration 8000:80
+# Open http://localhost:8000
+```
+
+The deployment uses `Recreate` strategy (SQLite doesn't support concurrent
+writers), requests minimal resources (128 Mi RAM, 100m CPU), and stores state
+on a 1 Gi PersistentVolumeClaim so migrations survive pod restarts.
+
 ### Cloud deployment
 
 The Docker image runs anywhere that supports containers (Azure Container
@@ -372,6 +409,14 @@ MailboxMigration/
 ├── Dockerfile              # Docker image for web app
 ├── docker-compose.yml      # Docker Compose for easy deployment
 ├── README.md               # This file
+├── k8s/                    # Kubernetes manifests
+│   ├── namespace.yaml
+│   ├── secret.example.yaml # Template — copy to secret.yaml and fill in
+│   ├── configmap.yaml      # config.yaml as a ConfigMap
+│   ├── pvc.yaml            # Persistent storage for state DB + logs
+│   ├── deployment.yaml     # Pod spec with health checks
+│   ├── service.yaml        # ClusterIP service
+│   └── ingress.yaml        # Optional ingress (Traefik / Nginx)
 ├── src/                    # Core migration engine
 │   ├── __init__.py
 │   ├── config.py           # YAML config loader + validation
