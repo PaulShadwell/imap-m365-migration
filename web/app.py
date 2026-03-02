@@ -318,8 +318,11 @@ async def api_start_dryrun():
 
 
 @app.post("/api/fix-drafts/start")
-async def api_start_fix_drafts():
+async def api_start_fix_drafts(mailboxes: list[str] = Query(default=[])):
     config = _load_app_config()
+    if mailboxes:
+        selected = {m.lower() for m in mailboxes}
+        config = _apply_mailbox_filter(config, selected)
     try:
         job = start_fix_drafts(config)
         return {"status": "started", "job_id": job.job_id}

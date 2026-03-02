@@ -148,10 +148,10 @@
         <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
           <h3 class="text-sm font-semibold mb-4">Quick Actions</h3>
           <div class="flex flex-wrap gap-2">
-            <button @click="startJob('dryrun')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-vial mr-1.5 text-yellow-500"></i> Dry Run</button>
+            <button @click="confirmAction('dryrun')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-vial mr-1.5 text-yellow-500"></i> Dry Run</button>
             <button @click="page='migration'" :disabled="job.running" class="btn btn-primary"><i class="fas fa-play mr-1.5"></i> Start Migration</button>
-            <button @click="startJob('repair')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-wrench mr-1.5 text-amber-500"></i> Repair</button>
-            <button @click="startJob('merge')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-object-group mr-1.5 text-purple-500"></i> Merge Folders</button>
+            <button @click="confirmAction('repair')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-wrench mr-1.5 text-amber-500"></i> Repair</button>
+            <button @click="confirmAction('merge')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-object-group mr-1.5 text-purple-500"></i> Merge Folders</button>
           </div>
         </div>
 
@@ -333,15 +333,15 @@
         <div class="card">
           <h3 class="card-title mb-4"><i class="fas fa-play-circle text-brand-500 mr-2"></i> Actions</h3>
           <div class="flex flex-wrap gap-2">
-            <button @click="startJob('dryrun')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-vial mr-1.5 text-yellow-500"></i> Dry Run</button>
-            <button @click="startFilteredJob('migrate')" :disabled="job.running" class="btn btn-primary"><i class="fas fa-play mr-1.5"></i> Start Migration</button>
-            <button @click="startJob('fix_drafts')" :disabled="job.running" class="btn btn-success"><i class="fas fa-bolt mr-1.5"></i> Fix Drafts</button>
-            <button @click="startJob('repair')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-wrench mr-1.5 text-amber-500"></i> Repair</button>
-            <button @click="startJob('merge')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-object-group mr-1.5 text-purple-500"></i> Merge Folders</button>
+            <button @click="confirmAction('dryrun')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-vial mr-1.5 text-yellow-500"></i> Dry Run</button>
+            <button @click="confirmAction('migrate', true)" :disabled="job.running" class="btn btn-primary"><i class="fas fa-play mr-1.5"></i> Start Migration</button>
+            <button @click="confirmAction('fix_drafts', true)" :disabled="job.running" class="btn btn-success"><i class="fas fa-bolt mr-1.5"></i> Fix Drafts</button>
+            <button @click="confirmAction('repair')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-wrench mr-1.5 text-amber-500"></i> Repair</button>
+            <button @click="confirmAction('merge')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-object-group mr-1.5 text-purple-500"></i> Merge Folders</button>
             <div class="w-px h-8 bg-gray-200 dark:bg-gray-700 mx-1 self-center"></div>
-            <button @click="startFilteredJob('clean')" :disabled="job.running" class="btn btn-danger-outline"><i class="fas fa-trash-can mr-1.5"></i> Clean Drafts</button>
-            <button @click="startJob('purge')" :disabled="job.running" class="btn btn-danger-outline"><i class="fas fa-broom mr-1.5"></i> Purge</button>
-            <button @click="startJob('relocate')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-truck-arrow-right mr-1.5"></i> Relocate</button>
+            <button @click="confirmAction('clean', true)" :disabled="job.running" class="btn btn-danger-outline"><i class="fas fa-trash-can mr-1.5"></i> Clean Drafts</button>
+            <button @click="confirmAction('purge')" :disabled="job.running" class="btn btn-danger-outline"><i class="fas fa-broom mr-1.5"></i> Purge</button>
+            <button @click="confirmAction('relocate')" :disabled="job.running" class="btn btn-secondary"><i class="fas fa-truck-arrow-right mr-1.5"></i> Relocate</button>
             <template x-if="job.running">
               <button @click="stopJob()" class="btn btn-danger ml-auto"><i class="fas fa-stop mr-1.5"></i> Stop</button>
             </template>
@@ -520,6 +520,37 @@
     </main>
   </div>
 
+  <!-- Confirmation dialog -->
+  <div x-show="showConfirmDialog" x-cloak class="fixed inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center" @click.self="cancelConfirmedAction()" @keydown.escape.window="cancelConfirmedAction()">
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 w-full max-w-md shadow-2xl fade-in" x-show="showConfirmDialog" x-transition>
+      <template x-if="_pendingAction && actionDescriptions[_pendingAction.type]">
+        <div>
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center" :class="actionDescriptions[_pendingAction.type].danger ? 'bg-red-100 dark:bg-red-600/10' : 'bg-brand-50 dark:bg-brand-600/10'">
+              <i :class="actionDescriptions[_pendingAction.type].icon" class="text-lg"></i>
+            </div>
+            <h3 class="text-base font-semibold text-gray-900 dark:text-white" x-text="actionDescriptions[_pendingAction.type].title"></h3>
+          </div>
+          <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-2" x-text="actionDescriptions[_pendingAction.type].description"></p>
+          <p x-show="_pendingAction.filtered && selectedMailboxes.length < mailboxes.length" class="text-xs text-brand-600 dark:text-brand-400 mt-2 mb-1">
+            <i class="fas fa-filter mr-1"></i>
+            <span x-text="`Applies to ${selectedMailboxes.length} of ${mailboxes.length} mailboxes`"></span>
+          </p>
+          <div x-show="actionDescriptions[_pendingAction.type].danger" class="flex items-start gap-2 mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <i class="fas fa-exclamation-triangle text-red-500 mt-0.5 text-xs"></i>
+            <p class="text-xs text-red-600 dark:text-red-400 font-medium">This action is destructive and cannot be undone.</p>
+          </div>
+          <div class="flex justify-end gap-2 mt-5">
+            <button @click="cancelConfirmedAction()" class="btn btn-secondary">Cancel</button>
+            <button @click="runConfirmedAction()" class="btn" :class="actionDescriptions[_pendingAction.type].danger ? 'btn-danger' : 'btn-primary'">
+              <i class="fas fa-check mr-1.5"></i> Confirm
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
   <!-- Toast notifications -->
   <div class="fixed bottom-4 right-4 space-y-2 z-50">
     <template x-for="(toast, ti) in toasts" :key="ti">
@@ -613,6 +644,18 @@
         editingMailbox: null,
         mbForm: { source_user: '', target_user: '', source_password: '' },
         pollTimer: null,
+        showConfirmDialog: false,
+        _pendingAction: null,
+        actionDescriptions: {
+          dryrun:     { title: 'Dry Run', icon: 'fas fa-vial text-yellow-500', description: 'Tests connectivity to all IMAP sources and Microsoft 365 targets without migrating any messages. Use this to validate your configuration before running a real migration.', danger: false },
+          migrate:    { title: 'Start Migration', icon: 'fas fa-play text-brand-500', description: 'Migrates all messages from the selected IMAP mailboxes to Microsoft 365. Already-migrated messages are automatically skipped. This operation is safe to re-run.', danger: false },
+          fix_drafts: { title: 'Fix Drafts', icon: 'fas fa-bolt text-emerald-500', description: 'Finds all messages incorrectly marked as drafts in the selected Microsoft 365 mailboxes and re-creates them as proper non-draft messages. The original draft copies are deleted after the fix.', danger: false },
+          repair:     { title: 'Repair', icon: 'fas fa-wrench text-amber-500', description: 'Scans for messages that were migrated but may be missing or corrupted in Microsoft 365, and re-uploads them. Useful if messages were accidentally deleted from the target.', danger: false },
+          merge:      { title: 'Merge Folders', icon: 'fas fa-object-group text-purple-500', description: 'Consolidates duplicate or fragmented folders in the target Microsoft 365 mailboxes. Moves messages from duplicate folders into the canonical folder and removes the empty duplicates.', danger: false },
+          clean:      { title: 'Clean Drafts', icon: 'fas fa-trash-can text-red-500', description: 'Permanently deletes all messages marked as drafts from the selected Microsoft 365 mailboxes. This cannot be undone — only use this if you are sure the draft messages are unwanted.', danger: true },
+          purge:      { title: 'Purge', icon: 'fas fa-broom text-red-500', description: 'Removes all migrated messages from the target Microsoft 365 mailboxes and resets the migration state. This is a destructive operation that cannot be undone.', danger: true },
+          relocate:   { title: 'Relocate', icon: 'fas fa-truck-arrow-right text-gray-500', description: 'Moves messages that were delivered to the wrong target mailbox (due to a mapping change) to the correct mailbox. Clears the old state entries so they can be re-migrated.', danger: false },
+        },
 
         get filteredLogLines() {
           if (!this.logSearch) return this.logLines;
@@ -645,6 +688,27 @@
         },
 
         toast(message, type = 'info') { this.toasts.push({ message, type }); },
+
+        confirmAction(actionType, filtered = false) {
+          this._pendingAction = { type: actionType, filtered };
+          this.showConfirmDialog = true;
+        },
+
+        runConfirmedAction() {
+          const { type, filtered } = this._pendingAction;
+          this.showConfirmDialog = false;
+          this._pendingAction = null;
+          if (filtered) {
+            this.startFilteredJob(type);
+          } else {
+            this.startJob(type);
+          }
+        },
+
+        cancelConfirmedAction() {
+          this.showConfirmDialog = false;
+          this._pendingAction = null;
+        },
 
         formatDate(iso) {
           if (!iso) return '';
@@ -748,7 +812,7 @@
         },
 
         async startFilteredJob(type) {
-          const endpoints = { migrate: '/api/migration/start', clean: '/api/clean/start' };
+          const endpoints = { migrate: '/api/migration/start', clean: '/api/clean/start', fix_drafts: '/api/fix-drafts/start' };
           let url = endpoints[type];
           if (this.selectedMailboxes.length > 0 && this.selectedMailboxes.length < this.mailboxes.length) {
             const params = this.selectedMailboxes.map(m => `mailboxes=${encodeURIComponent(m)}`).join('&');

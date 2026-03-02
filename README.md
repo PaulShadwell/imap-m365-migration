@@ -322,9 +322,10 @@ Tailwind CSS. This makes it easier for a team to use without the command line.
   directly from the browser.  Passwords are masked in the UI.
 - **Mailbox management** — add, edit, or remove mailbox mappings via a modal
   dialog.
-- **Migration control** — start migrations, dry runs, repairs, and folder
-  merges with a single click.  Real-time progress bar and live event stream via
-  WebSocket.
+- **Migration control** — start migrations, dry runs, repairs, fix drafts, and
+  folder merges with a single click.  Every action shows a confirmation dialog
+  explaining what it does before running.  Destructive actions are clearly
+  flagged.  Real-time progress bar and live event stream via WebSocket.
 - **Logs** — view the full migration log file and live log events.
 - **History** — browse all past migration runs with per-mailbox statistics.
 
